@@ -650,7 +650,7 @@ class SetVerbosity:
     def __enter__(self):
         self.tf_level = os.environ.get('TF_CPP_MIN_LOG_LEVEL', '0')
         self.log_level = logger.get_level()
-        self.gym_level = gym.logger.MIN_LEVEL
+        self.gym_level = gym.logger.min_level
 
         if self.verbose <= 1:
             os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'

@@ -28,7 +28,7 @@ def nature_cnn(scaled_images, **kwargs):
     return activ(linear(layer_3, 'fc1', n_hidden=512, init_scale=np.sqrt(2)))
 
 
-def mlp_extractor(flat_observations, net_arch, act_fun):
+def mlp_extractor(flat_observations, net_arch, act_fun, initializer_type=None):
     """
     Constructs an MLP that receives observations as an input and outputs a latent representation for the policy and
     a value network. The ``net_arch`` parameter allows to specify the amount and size of the hidden layers and how many
@@ -61,7 +61,7 @@ def mlp_extractor(flat_observations, net_arch, act_fun):
     for idx, layer in enumerate(net_arch):
         if isinstance(layer, int):  # Check that this is a shared layer
             layer_size = layer
-            latent = act_fun(linear(latent, "shared_fc{}".format(idx), layer_size, init_scale=np.sqrt(2)))
+            latent = act_fun(linear(latent, "shared_fc{}".format(idx), layer_size, init_scale=np.sqrt(2), initializer_type=initializer_type))
         else:
             assert isinstance(layer, dict), "Error: the net_arch list can only contain ints and dicts"
             if 'pi' in layer:
@@ -79,11 +79,11 @@ def mlp_extractor(flat_observations, net_arch, act_fun):
     for idx, (pi_layer_size, vf_layer_size) in enumerate(zip_longest(policy_only_layers, value_only_layers)):
         if pi_layer_size is not None:
             assert isinstance(pi_layer_size, int), "Error: net_arch[-1]['pi'] must only contain integers."
-            latent_policy = act_fun(linear(latent_policy, "pi_fc{}".format(idx), pi_layer_size, init_scale=np.sqrt(2)))
+            latent_policy = act_fun(linear(latent_policy, "pi_fc{}".format(idx), pi_layer_size, init_scale=np.sqrt(2), initializer_type=initializer_type))
 
         if vf_layer_size is not None:
             assert isinstance(vf_layer_size, int), "Error: net_arch[-1]['vf'] must only contain integers."
-            latent_value = act_fun(linear(latent_value, "vf_fc{}".format(idx), vf_layer_size, init_scale=np.sqrt(2)))
+            latent_value = act_fun(linear(latent_value, "vf_fc{}".format(idx), vf_layer_size, init_scale=np.sqrt(2), initializer_type=initializer_type))
 
     return latent_policy, latent_value
 
@@ -138,7 +138,9 @@ class BasePolicy(ABC):
         # are not passed explicitely (using **kwargs to forward the arguments)
         # that's why there should be not kwargs left when using the mlp_extractor
         # (in that case the keywords arguments are passed explicitely)
-        if feature_extraction == 'mlp' and len(kwargs) > 0:
+        # if feature_extraction == 'mlp' and len(kwargs) > 0:
+        #     raise ValueError("Unknown keywords for policy: {}".format(kwargs))
+        if feature_extraction == 'mlp' and len(kwargs) > 1:
             raise ValueError("Unknown keywords for policy: {}".format(kwargs))
 
     def step(self, obs, state=None, mask=None):
@@ -416,6 +418,10 @@ class FeedForwardPolicy(ActorCriticPolicy):
                                                 scale=(feature_extraction == "cnn"))
 
         self._kwargs_check(feature_extraction, kwargs)
+        if 'initializer_type' in kwargs:
+            initializer_type = kwargs['initializer_type']
+        else:
+            initializer_type = None
 
         if layers is not None:
             warnings.warn("Usage of the `layers` parameter is deprecated! Use net_arch instead "
@@ -433,12 +439,12 @@ class FeedForwardPolicy(ActorCriticPolicy):
             if feature_extraction == "cnn":
                 pi_latent = vf_latent = cnn_extractor(self.processed_obs, **kwargs)
             else:
-                pi_latent, vf_latent = mlp_extractor(tf.layers.flatten(self.processed_obs), net_arch, act_fun)
+                pi_latent, vf_latent = mlp_extractor(tf.layers.flatten(self.processed_obs), net_arch, act_fun,
+                                                     initializer_type=initializer_type)
 
-            self.value_fn = linear(vf_latent, 'vf', 1)
-
+            self.value_fn = linear(vf_latent, 'vf', 1, initializer_type=initializer_type)
             self.proba_distribution, self.policy, self.q_value = \
-                self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, init_scale=0.01)
+                self.pdtype.proba_distribution_from_latent(pi_latent, vf_latent, init_scale=0.01, initializer_type=initializer_type)
 
         self.initial_state = None
         self._setup_init()

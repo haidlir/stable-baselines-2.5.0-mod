@@ -131,7 +131,7 @@ def conv(input_tensor, scope, *, n_filters, filter_size, stride,
         return bias + tf.nn.conv2d(input_tensor, weight, strides=strides, padding=pad, data_format=data_format)
 
 
-def linear(input_tensor, scope, n_hidden, *, init_scale=1.0, init_bias=0.0):
+def linear(input_tensor, scope, n_hidden, *, init_scale=1.0, init_bias=0.0, initializer_type=None):
     """
     Creates a fully connected layer for TensorFlow
 
@@ -144,8 +144,18 @@ def linear(input_tensor, scope, n_hidden, *, init_scale=1.0, init_bias=0.0):
     """
     with tf.variable_scope(scope):
         n_input = input_tensor.get_shape()[1].value
-        weight = tf.get_variable("w", [n_input, n_hidden], initializer=ortho_init(init_scale))
-        bias = tf.get_variable("b", [n_hidden], initializer=tf.constant_initializer(init_bias))
+        if initializer_type == 'xavier':
+            # tf.glorot_normal_initializer() has no scale argument
+            # glorot_normal_initializer is inherited from variance_scaling
+            # https://github.com/tensorflow/tensorflow/blob/590d6eef7e91a6a7392c8ffffb7b58f2e0c8bc6b/tensorflow/python/ops/init_ops.py#L1279
+            weight = tf.get_variable("w", [n_input, n_hidden],
+                                     initializer=tf.initializers.variance_scaling(scale=init_scale,
+                                                                                  mode="fan_avg",
+                                                                                  distribution="truncated_normal"))
+            bias = tf.get_variable("b", [n_hidden], initializer=tf.constant_initializer(init_bias))
+        else:
+            weight = tf.get_variable("w", [n_input, n_hidden], initializer=ortho_init(init_scale))
+            bias = tf.get_variable("b", [n_hidden], initializer=tf.constant_initializer(init_bias))
         return tf.matmul(input_tensor, weight) + bias
 
 
